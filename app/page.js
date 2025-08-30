@@ -111,15 +111,39 @@ export default function Home() {
       const amountA = ethers.parseEther(liquidityAmounts.amountA);
       const amountB = ethers.parseEther(liquidityAmounts.amountB);
 
-      // Approve tokens first
+      // Check if contracts exist
+      setSuccess('Verifying contracts...');
       const dcxContract = new ethers.Contract(DCX_ADDRESS, ERC20_ABI, signer);
       const dcContract = new ethers.Contract(DC_ADDRESS, ERC20_ABI, signer);
 
+      // Verify contract deployment
+      try {
+        await dcxContract.name();
+        await dcContract.name();
+        await dex.tokenA();
+      } catch (contractError) {
+        throw new Error('Smart contracts not deployed. Please deploy contracts first or check network connection.');
+      }
+
+      // Check balances
+      const dcxBalance = await dcxContract.balanceOf(account);
+      const dcBalance = await dcContract.balanceOf(account);
+
+      if (dcxBalance < amountA) {
+        throw new Error(`Insufficient DCX balance. You have ${ethers.formatEther(dcxBalance)} DCX but need ${liquidityAmounts.amountA} DCX`);
+      }
+
+      if (dcBalance < amountB) {
+        throw new Error(`Insufficient DC balance. You have ${ethers.formatEther(dcBalance)} DC but need ${liquidityAmounts.amountB} DC`);
+      }
+
       setSuccess('Approving DCX tokens...');
-      await dcxContract.approve(DEX_ADDRESS, amountA);
+      const dcxApproveTx = await dcxContract.approve(DEX_ADDRESS, amountA);
+      await dcxApproveTx.wait();
 
       setSuccess('Approving DC tokens...');
-      await dcContract.approve(DEX_ADDRESS, amountB);
+      const dcApproveTx = await dcContract.approve(DEX_ADDRESS, amountB);
+      await dcApproveTx.wait();
 
       setSuccess('Adding liquidity...');
       const tx = await dex.addLiquidity(amountA, amountB);
@@ -132,8 +156,22 @@ export default function Home() {
       await loadBalances(account, provider);
       await loadReserves(dex);
     } catch (error) {
-      console.error(error);
-      setError(error.message || 'Error adding liquidity');
+      console.error('Add Liquidity Error:', error);
+      let errorMessage = 'Error adding liquidity';
+
+      if (error.message.includes('Smart contracts not deployed')) {
+        errorMessage = error.message;
+      } else if (error.message.includes('Insufficient')) {
+        errorMessage = error.message;
+      } else if (error.code === 'CALL_EXCEPTION') {
+        errorMessage = 'Transaction would fail. Please check contract deployment and your token balances.';
+      } else if (error.message.includes('user rejected')) {
+        errorMessage = 'Transaction cancelled by user';
+      } else {
+        errorMessage = error.message || errorMessage;
+      }
+
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -150,8 +188,30 @@ export default function Home() {
       const amountIn = ethers.parseEther(swapAmounts.amountIn);
       const tokenContract = new ethers.Contract(swapAmounts.tokenIn, ERC20_ABI, signer);
 
+      // Verify contracts and check liquidity
+      setSuccess('Verifying contracts and liquidity...');
+      try {
+        await dex.tokenA();
+        const reserveA = await dex.reserveA();
+        const reserveB = await dex.reserveB();
+
+        if (reserveA === 0n || reserveB === 0n) {
+          throw new Error('No liquidity available in the pool. Please add liquidity first.');
+        }
+      } catch (contractError) {
+        throw new Error('Smart contracts not deployed or no liquidity available. Please deploy contracts and add liquidity first.');
+      }
+
+      // Check user balance
+      const userBalance = await tokenContract.balanceOf(account);
+      if (userBalance < amountIn) {
+        const tokenSymbol = swapAmounts.tokenIn === DCX_ADDRESS ? 'DCX' : 'DC';
+        throw new Error(`Insufficient ${tokenSymbol} balance. You have ${ethers.formatEther(userBalance)} ${tokenSymbol} but need ${swapAmounts.amountIn} ${tokenSymbol}`);
+      }
+
       setSuccess('Approving tokens...');
-      await tokenContract.approve(DEX_ADDRESS, amountIn);
+      const approveTx = await tokenContract.approve(DEX_ADDRESS, amountIn);
+      await approveTx.wait();
 
       setSuccess('Executing swap...');
       const tx = await dex.swap(swapAmounts.tokenIn, amountIn, 0);
@@ -164,8 +224,24 @@ export default function Home() {
       await loadBalances(account, provider);
       await loadReserves(dex);
     } catch (error) {
-      console.error(error);
-      setError(error.message || 'Error executing swap');
+      console.error('Swap Error:', error);
+      let errorMessage = 'Error executing swap';
+
+      if (error.message.includes('Smart contracts not deployed')) {
+        errorMessage = error.message;
+      } else if (error.message.includes('No liquidity available')) {
+        errorMessage = error.message;
+      } else if (error.message.includes('Insufficient')) {
+        errorMessage = error.message;
+      } else if (error.code === 'CALL_EXCEPTION') {
+        errorMessage = 'Transaction would fail. Please check contract deployment, liquidity, and your token balances.';
+      } else if (error.message.includes('user rejected')) {
+        errorMessage = 'Transaction cancelled by user';
+      } else {
+        errorMessage = error.message || errorMessage;
+      }
+
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
