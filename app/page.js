@@ -3,9 +3,9 @@
 import { useState, useEffect } from 'react';
 import { ethers } from 'ethers';
 
-const DEX_ADDRESS = '0x56DEB47AC4403D48d7111B6365cd1866B01f8d13';
-const DCX_ADDRESS = '0xB287080120d6eA274dA0C1E1c8138003D4B5eB5F';
-const DC_ADDRESS = '0x7B4328c127B85369D9f82ca0503B000D09CF9180';
+const DEX_ADDRESS = '0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0';
+const DCX_ADDRESS = '0x5FbDB2315678afecb367f032d93F642f64180aa3';
+const DC_ADDRESS = '0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512';
 
 const DEX_ABI = [
   "function addLiquidity(uint256 amountA, uint256 amountB) external",
